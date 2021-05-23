@@ -40,11 +40,14 @@ String my_name = "/Clare";
 
 
 int HTTP_PORT = 80;
-char HOST_NAME[] = "https://who-s-at-work-a7zmhe11fk5c.runkit.sh";
+char HOST_NAME[] = "who-s-at-work-a7zmhe11fk5c.runkit.sh";
 String HTTP_METHOD = "GET"; // or POST
 String SET_METHOD = "/set_status";
 String STATUS_METHOD = "/status";
 String LISTEN_METHOD = "/status_changed";
+
+//JSON
+#include <ArduinoJson.h>
 
 void setup() {
   online = false;
@@ -79,7 +82,7 @@ void connectWIFI() {
   while (status != WL_CONNECTED) {
     Serial.println("Attempting to connect to network: ");
     Serial.println(ssid);
-    
+
     // Connect to WPA/WPA2 network:
     status = WiFi.begin(ssid, pass);
 
@@ -124,7 +127,7 @@ void loop() {
   Serial.print(online);
 
   checkButtons();
-  sendStatus();
+  getStatus();
   delay(200);
 }
 
@@ -151,36 +154,103 @@ void checkButtons() {
 
 }
 
-void sendStatus() {
+void send_status_request() {
+  String path = "/status";
+  String HTTP_version = "1.0";
+  Serial.println("Making HTTP Get request to /status");
+  client.println("GET " + path + " HTTP/" + HTTP_version);
+  client.println("Host: " + String(HOST_NAME));
+  client.println("Connection: close");
+  client.println();
+}
+
+DynamicJsonDocument process_status_response() {
+  Serial.println("Awaiting response");
+  Serial.println("Delaying to enable complete transmission");
+  delay(1000);
+
+  // Some code below from https://github.com/bblanchon/ArduinoJson/blob/6.x/examples/JsonHttpClient/JsonHttpClient.ino
+
+  // Allocate the JSON document
+  // Use https://arduinojson.org/v6/assistant to compute the capacity.
+  const size_t capacity = JSON_OBJECT_SIZE(3) + JSON_ARRAY_SIZE(2) + 60;
+  DynamicJsonDocument status_dictionary(capacity);
+
+  // Skip HTTP headers by looking for double new line
+  char endOfHeaders[] = "\r\n\r\n";
+
+  // Checking to see if we find new lines
+  if (!client.find(endOfHeaders)) {
+
+    // New lines not found!
+    Serial.println("Invalid response, failed to find the double newline characters for body of response.");
+    client.stop();
+    return status_dictionary;
+  }
+
+  // Parse JSON object
+  DeserializationError error = deserializeJson(status_dictionary, client);
+
+  // Check if we had error parsing
+  if (error) {
+    Serial.println("deserializeJson() failed: ");
+    Serial.println(error.f_str());
+    client.stop();
+    return status_dictionary;
+  }
+  else {
+    Serial.println("Successfully parsed json.");
+
+    // the server's disconnected, stop the client:
+    client.stop();
+    Serial.println();
+    Serial.println("disconnected");
+
+    // Return the new statuses!
+    return status_dictionary;
+  }
+}
+
+
+void getStatus() {
   //Unfinished
   if (send_online == true) {
     send_online = false;
 
-    if (client.connect("who-s-at-work-a7zmhe11fk5c.runkit.sh", 443)) {
-      Serial.println("Connected to server ");
-      client.println(HTTP_METHOD + " " + "/status" + " HTTP/1.1");
-      client.println("Host: " + String("who-s-at-work-a7zmhe11fk5c.runkit.sh"));
-      client.println("Connection: close");
-      client.println();
-      while (client.connected()) {
-        if (client.available()) {
+    Serial.println("Attempting to retrieve status");
+    if (client.connect(HOST_NAME, 443)) {
+      Serial.println("Connection to server successful");
 
-          // read an incoming byte from the server and print it to serial monitor:
-          char c = client.read();
-          Serial.print(c);
-        }
+      // Make the HTTPS status request
+      send_status_request();
+
+      // Ensure we are connected to receive response
+      if (client.connected()) {
+        // Parse dictionary from the resulting stream
+        DynamicJsonDocument status_dictionary = process_status_response();
+
+        // Pass in received dictionary to status update
+        handle_status_update(status_dictionary);
+      } else {
+        Serial.println("Not connected to server after sending status request. :-(");
       }
-      // the server's disconnected, stop the client:
-      client.stop();
-      Serial.println();
-      Serial.println("disconnected");
-
-    } else {
-      Serial.println("Not connected to server :-(");
     }
   }
 }
 
+void handle_status_update(DynamicJsonDocument status_dictionary) {
+  // Check if a name is found in the dictionary
+  if (status_dictionary.containsKey("Clare")) {
+    // If it is, then let's get the status
+    String clare_status = status_dictionary["Clare"];
+
+    // Print it out and alert lubby Clare that the JSON is ready for action!
+    Serial.println("Ready to handle JSON, parsed successfully, Clare's status is: " + clare_status);
+  }
+  else {
+    Serial.println("Couldn't find Clare in the status dictionary. Did something go wrong when parsing?");
+  }
+}
 
 
 void turnOnLight(bool on) {
