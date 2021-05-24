@@ -264,25 +264,26 @@ void checkButtons() {
 
 void sort_set_status_requests() {
   if (send_online == true) {
-    send_online ==  false;
+    send_online = false;
     getSetStatus("Online");//Send a set_status as Online.
     getStatus();// Retrieve most recent statuses
+    Serial.println("Finished sending status");
     return;
   }
   if (send_away == true) {
-    send_away ==  false;
+    send_away = false;
     getSetStatus("Away");//Send the set_status as Away.
     getStatus();// Retrieve most recent statuses
     return;
   }
   if (send_on_break == true) {
-    send_on_break ==  false;
+    send_on_break = false;
     getSetStatus("On_Break");//Send the set_status as On_Break.
     getStatus();// Retrieve most recent statuses
     return;
   }
   if (send_offline == true) {
-    send_offline ==  false;
+    send_offline = false;
     getSetStatus("Offline");//Send the set_status as Offline.
     getStatus();// Retrieve most recent statuses
     return;
@@ -391,8 +392,9 @@ void getSetStatus(String stat) {
 
     // Make the HTTPS status request
     set_status_request(stat);
-
-
+    delay(500);
+    Serial.println("Closing connection, assumed everything worked");
+    client.stop();    
   }
 
 }
