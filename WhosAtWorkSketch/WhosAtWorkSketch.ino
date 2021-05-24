@@ -1,4 +1,3 @@
-//#include <WiFi.h>
 #include <Dictionary.h>
 #include <WiFiNINA.h>
 #include "arduino_secrets.h"
@@ -18,10 +17,15 @@ const int PEOPLE_COUNT = 8;
 String names[PEOPLE_COUNT] = {"Clare", "Molly", "Connor", "Andrew", "Peter", "Hamish", "Oliver", "Pia"};
 
 // Possible statuses
-enum Status {ONLINE, AWAY, OFFLINE, ON_BREAK};
+enum Status {Online, Away, Offline, On_Break};
 
 // Count of statuses
 const int STATUS_COUNT = 4;
+
+// Status strings
+const String STATUS_STRINGS[STATUS_COUNT] = {"Online", "Away", "Offline", "On Break"};
+
+
 
 
 // Holds all info for a person
@@ -119,10 +123,13 @@ void setup() {
 
   //Initialising the Buttons and LEDs.
   pinMode(ONLINE_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(AWAY_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(BREAK_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(OFFLINE_BUTTON_PIN, INPUT_PULLUP);
   pinMode(LED_PIN, OUTPUT);
 
-  // Debugging:
-  //  Serial.println(HOST_NAME, HTTP_PORT);
+  // Get initial statuses from the server
+  getStatus();
 
 
 }
@@ -131,13 +138,13 @@ void setupPixelColours() {
 
   // Setting up the colour array
   Colour online_colour(0, 150, 20);
-  STATUS_COLOURS[ONLINE] = online_colour;
+  STATUS_COLOURS[Online] = online_colour;
   Colour away_colour(200, 150, 0);
-  STATUS_COLOURS[AWAY] = away_colour;
+  STATUS_COLOURS[Away] = away_colour;
   Colour offline_colour(250, 0, 0);
-  STATUS_COLOURS[OFFLINE] = offline_colour;
+  STATUS_COLOURS[Offline] = offline_colour;
   Colour on_break_colour(120, 0, 120);
-  STATUS_COLOURS[ON_BREAK] = on_break_colour;
+  STATUS_COLOURS[On_Break] = on_break_colour;
 
   strip.begin(); //always needed
   strip.show(); // 0 data => off.
@@ -204,41 +211,94 @@ void loop() {
 
   //  turnOnLight(online);
   showColours();
-  Serial.print(online);
 
-  checkButtons();
-  getStatus();
+
+  checkButtons();//Are any of the buttons being pressed?
+  sort_set_status_requests();//If they have been pressed, send a set status request
+  
   delay(200);
 }
 
 void checkButtons() {
+
   if (digitalRead(ONLINE_BUTTON_PIN) == ON_ONE_OR_ZERO) {
-    online = !online;
+    Serial.println("Online button pressed");
+    online = true;
+    away = false;
+    on_break = false;
+    offline = false;
     send_online = true;
   }
 
   if (digitalRead(AWAY_BUTTON_PIN) == ON_ONE_OR_ZERO) {
-    away == !away;
+    Serial.println("Away button pressed");
+    online = false;
+    away = true;
+    on_break = false;
+    offline = false;
     send_away = true;
   }
 
   if (digitalRead(BREAK_BUTTON_PIN) == ON_ONE_OR_ZERO) {
-    on_break == !on_break;
+    Serial.println("On Break button pressed");
+    online = false;
+    away = false;
+    on_break = true;
+    offline = false;
     send_on_break = true;
   }
 
   if (digitalRead(OFFLINE_BUTTON_PIN) == ON_ONE_OR_ZERO) {
-    offline == !offline;
+    Serial.println("Offline button pressed");
+    online = false;
+    away = false;
+    on_break = false;
+    offline = true;
     send_offline = true;
   }
 
+}
+
+void sort_set_status_requests() {
+  if (send_online == true) {
+    send_online ==  false;
+    set_status_request("Online");//Send a set_status as Online.
+    send_status_request();// Retrieve most recent statuses
+  }
+  if (send_away == true) {
+    send_away ==  false;
+    set_status_request("Away");//Send the set_status as Away.
+    send_status_request();// Retrieve most recent statuses
+  }
+  if (send_on_break == true) {
+    send_on_break ==  false;
+    set_status_request("On_Break");//Send the set_status as On_Break.
+    send_status_request();// Retrieve most recent statuses
+  }
+  if (send_offline == true) {
+    send_offline ==  false;
+    set_status_request("Offline");//Send the set_status as Offline.
+    send_status_request();// Retrieve most recent statuses
+  }
 }
 
 void send_status_request() {
   String path = "/status";
   String HTTP_version = "1.0";
   Serial.println("Making HTTP Get request to /status");
+  Serial.println("GET " + path + " HTTP/" + HTTP_version);//Show get request in console to compare
   client.println("GET " + path + " HTTP/" + HTTP_version);
+  client.println("Host: " + String(HOST_NAME));
+  client.println("Connection: close");
+  client.println();
+}
+
+void set_status_request(String stat) {
+  String path = "/set_status";
+  String HTTP_version = "1.0";
+  Serial.println("Setting your status as " + stat);
+  Serial.println("GET " + path + my_name + "/" + stat + " HTTP/" + HTTP_version);// show get request in console
+  client.println("GET " + path + my_name + "/" + stat + " HTTP/" + HTTP_version);
   client.println("Host: " + String(HOST_NAME));
   client.println("Connection: close");
   client.println();
@@ -253,7 +313,7 @@ DynamicJsonDocument process_status_response() {
 
   // Allocate the JSON document
   // Use https://arduinojson.org/v6/assistant to compute the capacity.
-  const size_t capacity = JSON_OBJECT_SIZE(3) + JSON_ARRAY_SIZE(2) + 60;
+  const size_t capacity = 200;
   DynamicJsonDocument status_dictionary(capacity);
 
   // Skip HTTP headers by looking for double new line
@@ -292,30 +352,28 @@ DynamicJsonDocument process_status_response() {
 }
 
 
+
 void getStatus() {
-  //Unfinished
-  if (send_online == true) {
-    send_online = false;
 
-    Serial.println("Attempting to retrieve status");
-    if (client.connect(HOST_NAME, 443)) {
-      Serial.println("Connection to server successful");
+  Serial.println("Attempting to retrieve status");
+  if (client.connect(HOST_NAME, 443)) {
+    Serial.println("Connection to server successful");
 
-      // Make the HTTPS status request
-      send_status_request();
+    // Make the HTTPS status request
+    send_status_request();
 
-      // Ensure we are connected to receive response
-      if (client.connected()) {
-        // Parse dictionary from the resulting stream
-        DynamicJsonDocument status_dictionary = process_status_response();
+    // Ensure we are connected to receive response
+    if (client.connected()) {
+      // Parse dictionary from the resulting stream
+      DynamicJsonDocument status_dictionary = process_status_response();
 
-        // Pass in received dictionary to status update
-        handle_status_update(status_dictionary);
-      } else {
-        Serial.println("Not connected to server after sending status request. :-(");
-      }
+      // Pass in received dictionary to status update
+      handle_status_update(status_dictionary);
+    } else {
+      Serial.println("Not connected to server after sending status request. :-(");
     }
   }
+
 }
 
 void handle_status_update(DynamicJsonDocument status_dictionary) {
@@ -327,14 +385,16 @@ void handle_status_update(DynamicJsonDocument status_dictionary) {
     //Loop Through people and update their status from the Json string
     for (int i = 0; i < PEOPLE_COUNT; i++) {
       String current_name = people[i].name;
-      if(status_dictionary.containsKey(current_name)){
-        String current_status = status_dictionary[current_name];
+      if (status_dictionary.containsKey(current_name)) {
+        String status_string = status_dictionary[current_name];
+        people[i].status = enum_from_string(status_string);
+        Serial.println(people[i].name + "'s has been set to " + STATUS_STRINGS[people[i].status]);
       } else {
-        Serial.println("Couldn't find" + current_name + "in the status Dictionary");  
+        Serial.println("Couldn't find " + current_name + " in the status Dictionary");
       }
-      
-    }
 
+    }
+    set_colours();
     // Print it out and alert Clare that the JSON is ready for action!
     Serial.println("Ready to handle JSON, parsed successfully, Clare's status is: " + clare_status);
   }
@@ -391,6 +451,7 @@ void showColours() {
 void set_colours() {
 
   // Looping through people array and updating LEDs
+  //  Serial.println("Setting Colours");
   for (int i = 0; i < PEOPLE_COUNT; i++) {
     Person person = people[i];
     Colour c = STATUS_COLOURS[person.status];
@@ -402,5 +463,20 @@ void set_colours() {
                                     c.G,
                                     c.B)
                        );
+  }
+}
+
+Status enum_from_string(String string_status) {
+  if (string_status == "Online") {
+    return Online;
+  }
+  if (string_status == "Away") {
+    return Away;
+  }
+  if (string_status == "Offline") {
+    return Offline;
+  }
+  if (string_status == "On_Break") {
+    return On_Break;
   }
 }
