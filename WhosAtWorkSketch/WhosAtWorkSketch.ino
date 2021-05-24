@@ -110,6 +110,9 @@ String LISTEN_METHOD = "/status_changed";
 
 void setup() {
   online = false;
+  away = false;
+  on_break = false;
+  offline = false;
   Serial.begin(9600);
 
   //Initialise LEDS:
@@ -262,23 +265,27 @@ void checkButtons() {
 void sort_set_status_requests() {
   if (send_online == true) {
     send_online ==  false;
-    set_status_request("Online");//Send a set_status as Online.
-    send_status_request();// Retrieve most recent statuses
+    getSetStatus("Online");//Send a set_status as Online.
+    getStatus();// Retrieve most recent statuses
+    return;
   }
   if (send_away == true) {
     send_away ==  false;
-    set_status_request("Away");//Send the set_status as Away.
-    send_status_request();// Retrieve most recent statuses
+    getSetStatus("Away");//Send the set_status as Away.
+    getStatus();// Retrieve most recent statuses
+    return;
   }
   if (send_on_break == true) {
     send_on_break ==  false;
-    set_status_request("On_Break");//Send the set_status as On_Break.
-    send_status_request();// Retrieve most recent statuses
+    getSetStatus("On_Break");//Send the set_status as On_Break.
+    getStatus();// Retrieve most recent statuses
+    return;
   }
   if (send_offline == true) {
     send_offline ==  false;
-    set_status_request("Offline");//Send the set_status as Offline.
-    send_status_request();// Retrieve most recent statuses
+    getSetStatus("Offline");//Send the set_status as Offline.
+    getStatus();// Retrieve most recent statuses
+    return;
   }
 }
 
@@ -372,6 +379,20 @@ void getStatus() {
     } else {
       Serial.println("Not connected to server after sending status request. :-(");
     }
+  }
+
+}
+
+void getSetStatus(String stat) {
+
+  Serial.println("Attempting to retrieve status");
+  if (client.connect(HOST_NAME, 443)) {
+    Serial.println("Connection to server successful");
+
+    // Make the HTTPS status request
+    set_status_request(stat);
+
+
   }
 
 }
