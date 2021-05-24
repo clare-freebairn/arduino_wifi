@@ -213,12 +213,10 @@ void printData() {
 void loop() {
 
   //  turnOnLight(online);
-  showColours();
-
-
+  
   checkButtons();//Are any of the buttons being pressed?
   sort_set_status_requests();//If they have been pressed, send a set status request
-  
+  showColours();
   delay(200);
 }
 
