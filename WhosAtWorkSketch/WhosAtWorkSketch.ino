@@ -11,6 +11,61 @@
 
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
+// Total people
+const int PEOPLE_COUNT = 8;
+
+// List of names (change order to match LED index on strip)
+String names[PEOPLE_COUNT] = {"Clare", "Molly", "Connor", "Andrew", "Peter", "Hamish", "Oliver", "Pia"};
+
+// Possible statuses
+enum Status {ONLINE, AWAY, OFFLINE, ON_BREAK};
+
+// Count of statuses
+const int STATUS_COUNT = 4;
+
+
+// Holds all info for a person
+class Person {
+  public:
+    // Index on LED strip
+    int led;
+
+    String name;
+
+    // Current status (enum)
+    Status status;
+};
+
+class Colour {
+  public:
+
+    // RGB values for colour
+    int R; // 0-255
+    int G;
+    int B;
+
+    // Create colour with initial values
+    Colour(int red_amount, int green_amount, int blue_amount) {
+      R = red_amount;
+      G = green_amount;
+      B = blue_amount;
+    };
+
+    // Default colour initializer
+    Colour() {
+      R = 0;
+      G = 0;
+      B = 0;
+    }
+};
+
+// Status colours
+Colour STATUS_COLOURS[STATUS_COUNT];
+
+// All of the people! (Their Person classes)
+Person people[PEOPLE_COUNT];
+
+
 //WiFi connectivity variables:
 WiFiSSLClient client;
 char ssid[] = SECRET_SSID;        // network SSID
@@ -57,7 +112,7 @@ void setup() {
   strip.begin(); //always needed
   strip.show(); // 0 data => off.
   strip.setBrightness(50); // ~20% (max = 255)
-
+  setupPixelColours(); // setting up the Colour classes
   //WIFI setup code will go here:
 
   connectWIFI();
@@ -70,6 +125,30 @@ void setup() {
   //  Serial.println(HOST_NAME, HTTP_PORT);
 
 
+}
+
+void setupPixelColours() {
+
+  // Setting up the colour array
+  Colour online_colour(0, 150, 20);
+  STATUS_COLOURS[ONLINE] = online_colour;
+  Colour away_colour(200, 150, 0);
+  STATUS_COLOURS[AWAY] = away_colour;
+  Colour offline_colour(250, 0, 0);
+  STATUS_COLOURS[OFFLINE] = offline_colour;
+  Colour on_break_colour(120, 0, 120);
+  STATUS_COLOURS[ON_BREAK] = on_break_colour;
+
+  strip.begin(); //always needed
+  strip.show(); // 0 data => off.
+  strip.setBrightness(5); // ~20% (max = 255)
+
+  // Setup array of people!
+  for (int i = 0; i < PEOPLE_COUNT; i ++) {
+    people[i].led = i;
+    people[i].name = names[i];
+    people[i].status = Status(i % STATUS_COUNT);
+  }
 }
 
 //This function is copied from the tutorial on Arduino.cc
@@ -123,7 +202,8 @@ void printData() {
 
 void loop() {
 
-  turnOnLight(online);
+  //  turnOnLight(online);
+  showColours();
   Serial.print(online);
 
   checkButtons();
@@ -244,7 +324,18 @@ void handle_status_update(DynamicJsonDocument status_dictionary) {
     // If it is, then let's get the status
     String clare_status = status_dictionary["Clare"];
 
-    // Print it out and alert lubby Clare that the JSON is ready for action!
+    //Loop Through people and update their status from the Json string
+    for (int i = 0; i < PEOPLE_COUNT; i++) {
+      String current_name = people[i].name;
+      if(status_dictionary.containsKey(current_name)){
+        String current_status = status_dictionary[current_name];
+      } else {
+        Serial.println("Couldn't find" + current_name + "in the status Dictionary");  
+      }
+      
+    }
+
+    // Print it out and alert Clare that the JSON is ready for action!
     Serial.println("Ready to handle JSON, parsed successfully, Clare's status is: " + clare_status);
   }
   else {
@@ -253,39 +344,63 @@ void handle_status_update(DynamicJsonDocument status_dictionary) {
 }
 
 
-void turnOnLight(bool on) {
-  //Turns on the lights that correspond to each status
+//void turnOnLight(bool on) {
+//  //Turns on the lights that correspond to each status
+//
+//  //If online is true, turn on
+//  if (on) {
+//    makeLights();
+//  } else {
+//    digitalWrite(LED_PIN, LOW);
+//  }
+//
+//  //If offline is true, turn on
+//
+//  //If away is true, turn on.
+//
+//  //If Break is true, turn on.
+//
+//}
+//
+//
+//void makeLights() {
+//
+//  int n = strip.numPixels();
+//  // fph = FirstPixelHue;
+//  for (long fph = 0; fph < 5 * 65536; fph += 1024)
+//  {
+//    for (int i = 0; i < n; i++)
+//    {
+//      int pixelHue = fph + (i * 65536L / n);
+//      strip.setPixelColor(i,
+//                          strip.gamma32(strip.ColorHSV(pixelHue))
+//                         );
+//    }
+//    strip.show();
+//    delay(10);
+//  }
+//}
 
-  //If online is true, turn on
-  if (on) {
-    makeLights();
-  } else {
-    digitalWrite(LED_PIN, LOW);
-  }
 
-  //If offline is true, turn on
-
-  //If away is true, turn on.
-
-  //If Break is true, turn on.
-
+void showColours() {
+  set_colours();
+  strip.show();
+  delay(1000);
 }
 
+void set_colours() {
 
-void makeLights() {
+  // Looping through people array and updating LEDs
+  for (int i = 0; i < PEOPLE_COUNT; i++) {
+    Person person = people[i];
+    Colour c = STATUS_COLOURS[person.status];
 
-  int n = strip.numPixels();
-  // fph = FirstPixelHue;
-  for (long fph = 0; fph < 5 * 65536; fph += 1024)
-  {
-    for (int i = 0; i < n; i++)
-    {
-      int pixelHue = fph + (i * 65536L / n);
-      strip.setPixelColor(i,
-                          strip.gamma32(strip.ColorHSV(pixelHue))
-                         );
-    }
-    strip.show();
-    delay(10);
+    // Set corresponding pixel in strip
+    // to the correct colour.
+    strip.setPixelColor(person.led,
+                        strip.Color(c.R,
+                                    c.G,
+                                    c.B)
+                       );
   }
 }
