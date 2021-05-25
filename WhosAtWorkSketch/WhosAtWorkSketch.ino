@@ -1,15 +1,19 @@
-#include <Dictionary.h>
+//Included Libraries and external Files:
 #include <WiFiNINA.h>
+#include <Chrono.h>
+#include <Adafruit_NeoPixel.h>
 #include "arduino_secrets.h"
 
-//Light things:
-#include <Adafruit_NeoPixel.h>
+//+++++++++++++++++ Variables and Classes +++++++++++++++++
+
+//LIGHTS SETUP:
 #define LED_PIN 8
 #define BUTTON_PIN 7
 #define LED_COUNT 120
 
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
+//SETTING UP PEOPLE CLASS 
 // Total people
 const int PEOPLE_COUNT = 8;
 
@@ -70,11 +74,13 @@ Colour STATUS_COLOURS[STATUS_COUNT];
 Person people[PEOPLE_COUNT];
 
 
-//WiFi connectivity variables:
+//WIFI CONNECTION THINGS:
 WiFiSSLClient client;
 char ssid[] = SECRET_SSID;        // network SSID
 char pass[] = SECRET_PASS;    //network password
 int status = WL_IDLE_STATUS;     // the Wifi radio's status
+
+Chrono status_request_timer;
 
 //Pins:
 int ONLINE_BUTTON_PIN = 7;
@@ -85,7 +91,7 @@ int ON_ONE_OR_ZERO = 0;
 
 
 
-//Global variables:
+//GLOBAL VARIABLES:
 int button;
 bool online;
 bool away;
@@ -108,33 +114,35 @@ String LISTEN_METHOD = "/status_changed";
 //JSON
 #include <ArduinoJson.h>
 
+//+++++++++++++++++ Things that are run in Setup +++++++++++++++++
+
 void setup() {
+
+  //Initialise status booleans:
   online = false;
   away = false;
   on_break = false;
   offline = false;
   Serial.begin(9600);
-
-  //Initialise LEDS:
-  strip.begin(); //always needed
-  strip.show(); // 0 data => off.
-  strip.setBrightness(50); // ~20% (max = 255)
-  setupPixelColours(); // setting up the Colour classes
-  //WIFI setup code will go here:
-
-  connectWIFI();
-
+  
   //Initialising the Buttons and LEDs.
   pinMode(ONLINE_BUTTON_PIN, INPUT_PULLUP);
   pinMode(AWAY_BUTTON_PIN, INPUT_PULLUP);
   pinMode(BREAK_BUTTON_PIN, INPUT_PULLUP);
   pinMode(OFFLINE_BUTTON_PIN, INPUT_PULLUP);
   pinMode(LED_PIN, OUTPUT);
+  
+  //Initialise LEDS:
+  strip.begin(); //always needed
+  strip.show(); // 0 data => off.
+  strip.setBrightness(50); // ~20% (max = 255)
+  setupPixelColours(); // setting up the Colour classes
+  
+  //Connect to local network:
+  connectWIFI();
 
   // Get initial statuses from the server
   getStatus();
-
-
 }
 
 void setupPixelColours() {
@@ -149,11 +157,7 @@ void setupPixelColours() {
   Colour on_break_colour(120, 0, 120);
   STATUS_COLOURS[On_Break] = on_break_colour;
 
-  strip.begin(); //always needed
-  strip.show(); // 0 data => off.
-  strip.setBrightness(5); // ~20% (max = 255)
-
-  // Setup array of people!
+  // Setup array of people
   for (int i = 0; i < PEOPLE_COUNT; i ++) {
     people[i].led = i;
     people[i].name = names[i];
@@ -161,10 +165,11 @@ void setupPixelColours() {
   }
 }
 
-//This function is copied from the tutorial on Arduino.cc
-//about how to connect Arduino MKR WiFi 1010 to a network.
-void connectWIFI() {
 
+void connectWIFI() {
+  //This function is copied from the tutorial on Arduino.cc
+  //about how to connect Arduino MKR WiFi 1010 to a network.
+  
   while (!Serial);
 
   // attempt to connect to Wifi network:
@@ -190,8 +195,9 @@ void connectWIFI() {
 
 }
 
-//Also taken from Arduino.cc tutorial
+
 void printData() {
+  //Also taken from Arduino.cc tutorial
   Serial.println("Board Information:");
   // print your board's IP address:
   IPAddress ip = WiFi.localIP();
@@ -210,10 +216,15 @@ void printData() {
 
 }
 
+//+++++++++++++++++ Things that are run in the loop +++++++++++++++++
+
 void loop() {
 
-  //  turnOnLight(online);
-  
+  if(status_request_timer.hasPassed(120000)){ // Every two minutes, get status from server 
+    Serial.println("Two minutes has passed - Requesting status from server");
+    getStatus();
+    status_request_timer.restart();
+  }
   checkButtons();//Are any of the buttons being pressed?
   sort_set_status_requests();//If they have been pressed, send a set status request
   showColours();
@@ -272,18 +283,21 @@ void sort_set_status_requests() {
     send_away = false;
     getSetStatus("Away");//Send the set_status as Away.
     getStatus();// Retrieve most recent statuses
+    Serial.println("Finished sending status");
     return;
   }
   if (send_on_break == true) {
     send_on_break = false;
     getSetStatus("On_Break");//Send the set_status as On_Break.
     getStatus();// Retrieve most recent statuses
+    Serial.println("Finished sending status");
     return;
   }
   if (send_offline == true) {
     send_offline = false;
     getSetStatus("Offline");//Send the set_status as Offline.
     getStatus();// Retrieve most recent statuses
+    Serial.println("Finished sending status");
     return;
   }
 }
@@ -383,15 +397,15 @@ void getStatus() {
 }
 
 void getSetStatus(String stat) {
-
-  Serial.println("Attempting to retrieve status");
+  //sets up the client to send a set status request to the server.
+  Serial.println("Attempting to set status");
   if (client.connect(HOST_NAME, 443)) {
     Serial.println("Connection to server successful");
 
-    // Make the HTTPS status request
+    // Make the HTTPS set status request
     set_status_request(stat);
     delay(500);
-    Serial.println("Closing connection, assumed everything worked");
+    Serial.println("Closing connection, status has been set");
     client.stop();    
   }
 
@@ -409,7 +423,7 @@ void handle_status_update(DynamicJsonDocument status_dictionary) {
       if (status_dictionary.containsKey(current_name)) {
         String status_string = status_dictionary[current_name];
         people[i].status = enum_from_string(status_string);
-        Serial.println(people[i].name + "'s has been set to " + STATUS_STRINGS[people[i].status]);
+        //Serial.println(people[i].name + "'s has been set to " + STATUS_STRINGS[people[i].status]);
       } else {
         Serial.println("Couldn't find " + current_name + " in the status Dictionary");
       }
@@ -425,54 +439,15 @@ void handle_status_update(DynamicJsonDocument status_dictionary) {
 }
 
 
-//void turnOnLight(bool on) {
-//  //Turns on the lights that correspond to each status
-//
-//  //If online is true, turn on
-//  if (on) {
-//    makeLights();
-//  } else {
-//    digitalWrite(LED_PIN, LOW);
-//  }
-//
-//  //If offline is true, turn on
-//
-//  //If away is true, turn on.
-//
-//  //If Break is true, turn on.
-//
-//}
-//
-//
-//void makeLights() {
-//
-//  int n = strip.numPixels();
-//  // fph = FirstPixelHue;
-//  for (long fph = 0; fph < 5 * 65536; fph += 1024)
-//  {
-//    for (int i = 0; i < n; i++)
-//    {
-//      int pixelHue = fph + (i * 65536L / n);
-//      strip.setPixelColor(i,
-//                          strip.gamma32(strip.ColorHSV(pixelHue))
-//                         );
-//    }
-//    strip.show();
-//    delay(10);
-//  }
-//}
-
-
 void showColours() {
   set_colours();
   strip.show();
-  delay(1000);
+  //delay(1000); //Removed second delay to allow program to run faster each loop.
 }
 
 void set_colours() {
 
   // Looping through people array and updating LEDs
-  //  Serial.println("Setting Colours");
   for (int i = 0; i < PEOPLE_COUNT; i++) {
     Person person = people[i];
     Colour c = STATUS_COLOURS[person.status];
@@ -487,7 +462,9 @@ void set_colours() {
   }
 }
 
+
 Status enum_from_string(String string_status) {
+  //Cast the enum to a string - used to send the enum status to the server.
   if (string_status == "Online") {
     return Online;
   }
