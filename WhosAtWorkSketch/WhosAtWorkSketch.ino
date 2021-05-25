@@ -8,7 +8,6 @@
 
 //LIGHTS SETUP:
 #define LED_PIN 8
-#define BUTTON_PIN 7
 #define LED_COUNT 120
 
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
@@ -21,13 +20,13 @@ const int PEOPLE_COUNT = 8;
 String names[PEOPLE_COUNT] = {"Clare", "Molly", "Connor", "Andrew", "Peter", "Hamish", "Oliver", "Pia"};
 
 // Possible statuses
-enum Status {Online, Away, Offline, On_Break};
+enum Status {Online, On_Call, Offline, On_Break};
 
 // Count of statuses
 const int STATUS_COUNT = 4;
 
 // Status strings
-const String STATUS_STRINGS[STATUS_COUNT] = {"Online", "Away", "Offline", "On Break"};
+const String STATUS_STRINGS[STATUS_COUNT] = {"Online", "On_Call", "Offline", "On Break"};
 
 
 
@@ -84,7 +83,7 @@ Chrono status_request_timer;
 
 //Pins:
 int ONLINE_BUTTON_PIN = 7;
-int AWAY_BUTTON_PIN = 6;
+int CALL_BUTTON_PIN = 6;
 int BREAK_BUTTON_PIN = 5;
 int OFFLINE_BUTTON_PIN = 4;
 int ON_ONE_OR_ZERO = 0;
@@ -94,11 +93,11 @@ int ON_ONE_OR_ZERO = 0;
 //GLOBAL VARIABLES:
 int button;
 bool online;
-bool away;
+bool call;
 bool on_break;
 bool offline;
 bool send_online;
-bool send_away;
+bool send_call;
 bool send_on_break;
 bool send_offline;
 String my_name = "/Clare";
@@ -120,14 +119,14 @@ void setup() {
 
   //Initialise status booleans:
   online = false;
-  away = false;
+  call = false;
   on_break = false;
   offline = false;
   Serial.begin(9600);
   
   //Initialising the Buttons and LEDs.
   pinMode(ONLINE_BUTTON_PIN, INPUT_PULLUP);
-  pinMode(AWAY_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(CALL_BUTTON_PIN, INPUT_PULLUP);
   pinMode(BREAK_BUTTON_PIN, INPUT_PULLUP);
   pinMode(OFFLINE_BUTTON_PIN, INPUT_PULLUP);
   pinMode(LED_PIN, OUTPUT);
@@ -150,8 +149,8 @@ void setupPixelColours() {
   // Setting up the colour array
   Colour online_colour(0, 150, 20);
   STATUS_COLOURS[Online] = online_colour;
-  Colour away_colour(200, 150, 0);
-  STATUS_COLOURS[Away] = away_colour;
+  Colour call_colour(200, 150, 0);
+  STATUS_COLOURS[On_Call] = call_colour;
   Colour offline_colour(250, 0, 0);
   STATUS_COLOURS[Offline] = offline_colour;
   Colour on_break_colour(120, 0, 120);
@@ -220,8 +219,8 @@ void printData() {
 
 void loop() {
 
-  if(status_request_timer.hasPassed(120000)){ // Every two minutes, get status from server 
-    Serial.println("Two minutes has passed - Requesting status from server");
+  if(status_request_timer.hasPassed(60000)){ // Every two minutes, get status from server 
+    Serial.println("A minute has passed - Requesting status from server");
     getStatus();
     status_request_timer.restart();
   }
@@ -234,36 +233,40 @@ void loop() {
 void checkButtons() {
 
   if (digitalRead(ONLINE_BUTTON_PIN) == ON_ONE_OR_ZERO) {
+    Serial.println("----------------------------------------");
     Serial.println("Online button pressed");
     online = true;
-    away = false;
+    call = false;
     on_break = false;
     offline = false;
     send_online = true;
   }
 
-  if (digitalRead(AWAY_BUTTON_PIN) == ON_ONE_OR_ZERO) {
-    Serial.println("Away button pressed");
+  if (digitalRead(CALL_BUTTON_PIN) == ON_ONE_OR_ZERO) {
+    Serial.println("----------------------------------------");
+    Serial.println("In_Call button pressed");
     online = false;
-    away = true;
+    call = true;
     on_break = false;
     offline = false;
-    send_away = true;
+    send_call = true;
   }
 
   if (digitalRead(BREAK_BUTTON_PIN) == ON_ONE_OR_ZERO) {
+    Serial.println("----------------------------------------");
     Serial.println("On Break button pressed");
     online = false;
-    away = false;
+    call = false;
     on_break = true;
     offline = false;
     send_on_break = true;
   }
 
   if (digitalRead(OFFLINE_BUTTON_PIN) == ON_ONE_OR_ZERO) {
+    Serial.println("----------------------------------------");
     Serial.println("Offline button pressed");
     online = false;
-    away = false;
+    call = false;
     on_break = false;
     offline = true;
     send_offline = true;
@@ -277,13 +280,15 @@ void sort_set_status_requests() {
     getSetStatus("Online");//Send a set_status as Online.
     getStatus();// Retrieve most recent statuses
     Serial.println("Finished sending status");
+    Serial.println("----------------------------------------");
     return;
   }
-  if (send_away == true) {
-    send_away = false;
-    getSetStatus("Away");//Send the set_status as Away.
+  if (send_call == true) {
+    send_call = false;
+    getSetStatus("On_Call");//Send the set_status as On_Call.
     getStatus();// Retrieve most recent statuses
     Serial.println("Finished sending status");
+    Serial.println("----------------------------------------");
     return;
   }
   if (send_on_break == true) {
@@ -291,6 +296,7 @@ void sort_set_status_requests() {
     getSetStatus("On_Break");//Send the set_status as On_Break.
     getStatus();// Retrieve most recent statuses
     Serial.println("Finished sending status");
+    Serial.println("----------------------------------------");
     return;
   }
   if (send_offline == true) {
@@ -298,6 +304,7 @@ void sort_set_status_requests() {
     getSetStatus("Offline");//Send the set_status as Offline.
     getStatus();// Retrieve most recent statuses
     Serial.println("Finished sending status");
+    Serial.println("----------------------------------------");
     return;
   }
 }
@@ -306,7 +313,6 @@ void send_status_request() {
   String path = "/status";
   String HTTP_version = "1.0";
   Serial.println("Making HTTP Get request to /status");
-  Serial.println("GET " + path + " HTTP/" + HTTP_version);//Show get request in console to compare
   client.println("GET " + path + " HTTP/" + HTTP_version);
   client.println("Host: " + String(HOST_NAME));
   client.println("Connection: close");
@@ -317,7 +323,6 @@ void set_status_request(String stat) {
   String path = "/set_status";
   String HTTP_version = "1.0";
   Serial.println("Setting your status as " + stat);
-  Serial.println("GET " + path + my_name + "/" + stat + " HTTP/" + HTTP_version);// show get request in console
   client.println("GET " + path + my_name + "/" + stat + " HTTP/" + HTTP_version);
   client.println("Host: " + String(HOST_NAME));
   client.println("Connection: close");
@@ -333,7 +338,7 @@ DynamicJsonDocument process_status_response() {
 
   // Allocate the JSON document
   // Use https://arduinojson.org/v6/assistant to compute the capacity.
-  const size_t capacity = 200;
+  const size_t capacity = 300;
   DynamicJsonDocument status_dictionary(capacity);
 
   // Skip HTTP headers by looking for double new line
@@ -374,7 +379,7 @@ DynamicJsonDocument process_status_response() {
 
 
 void getStatus() {
-
+  Serial.println("----------------------------------------");
   Serial.println("Attempting to retrieve status");
   if (client.connect(HOST_NAME, 443)) {
     Serial.println("Connection to server successful");
@@ -393,11 +398,12 @@ void getStatus() {
       Serial.println("Not connected to server after sending status request. :-(");
     }
   }
-
+  Serial.println("----------------------------------------");
 }
 
 void getSetStatus(String stat) {
   //sets up the client to send a set status request to the server.
+  Serial.println("----------------------------------------");
   Serial.println("Attempting to set status");
   if (client.connect(HOST_NAME, 443)) {
     Serial.println("Connection to server successful");
@@ -408,7 +414,7 @@ void getSetStatus(String stat) {
     Serial.println("Closing connection, status has been set");
     client.stop();    
   }
-
+  Serial.println("----------------------------------------");
 }
 
 void handle_status_update(DynamicJsonDocument status_dictionary) {
@@ -468,8 +474,8 @@ Status enum_from_string(String string_status) {
   if (string_status == "Online") {
     return Online;
   }
-  if (string_status == "Away") {
-    return Away;
+  if (string_status == "On_Call") {
+    return On_Call;
   }
   if (string_status == "Offline") {
     return Offline;
