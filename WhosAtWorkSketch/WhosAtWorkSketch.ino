@@ -17,7 +17,9 @@ Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 const int PEOPLE_COUNT = 8;
 
 // List of names (change order to match LED index on strip)
-String names[PEOPLE_COUNT] = {"Clare", "Molly", "Connor", "Andrew", "Peter", "Hamish", "Oliver", "Pia"};
+//String names[PEOPLE_COUNT] = {"Clare", "Molly", "Connor", "Andrew", "Peter", "Hamish", "Oliver", "Pia"};
+String names[PEOPLE_COUNT] = {"Clare", "Peter", "Louise", "Andrew", "Oliver", "Hamish", "Honey", "Cocoa"};
+int LED_ORDER[PEOPLE_COUNT] = {12, 8, 4, 0, 20, 24, 28, 32};
 
 // Possible statuses
 enum Status {Online, On_Call, Offline, On_Break};
@@ -83,8 +85,8 @@ Chrono status_request_timer;
 
 //Pins:
 int ONLINE_BUTTON_PIN = 7;
-int CALL_BUTTON_PIN = 6;
-int BREAK_BUTTON_PIN = 5;
+int CALL_BUTTON_PIN = 5;
+int BREAK_BUTTON_PIN = 6;
 int OFFLINE_BUTTON_PIN = 4;
 int ON_ONE_OR_ZERO = 0;
 
@@ -149,7 +151,7 @@ void setupPixelColours() {
   // Setting up the colour array
   Colour online_colour(0, 150, 20);
   STATUS_COLOURS[Online] = online_colour;
-  Colour call_colour(200, 150, 0);
+  Colour call_colour(255, 40, 0);
   STATUS_COLOURS[On_Call] = call_colour;
   Colour offline_colour(250, 0, 0);
   STATUS_COLOURS[Offline] = offline_colour;
@@ -158,7 +160,7 @@ void setupPixelColours() {
 
   // Setup array of people
   for (int i = 0; i < PEOPLE_COUNT; i ++) {
-    people[i].led = i;
+    people[i].led = LED_ORDER[i];
     people[i].name = names[i];
     people[i].status = Status(i % STATUS_COUNT);
   }
